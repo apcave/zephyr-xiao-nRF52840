@@ -9,8 +9,8 @@
 		zephyr,bt-hci = &bt_hci_sdc;
 		zephyr,entropy = &cryptocell;
 		zephyr,flash-controller = &flash_controller;
-		zephyr,console = &usb_cdc_acm_uart;
-		zephyr,shell-uart = &usb_cdc_acm_uart;
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
 		zephyr,uart-mcumgr = &usb_cdc_acm_uart;
 		zephyr,bt-mon-uart = &usb_cdc_acm_uart;
 		zephyr,bt-c2h-uart = &usb_cdc_acm_uart;

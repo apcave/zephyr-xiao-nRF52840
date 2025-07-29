@@ -181,8 +181,6 @@ _Python3_EXECUTABLE:INTERNAL=/home/apcave/nordic/.venv/bin/python
 //Python3 Properties
 _Python3_INTERPRETER_PROPERTIES:INTERNAL=Python;3;11;2;64;;cpython-311-x86_64-linux-gnu;/usr/lib/python3.11;/usr/lib/python3.11;/home/apcave/nordic/.venv/lib/python3.11/site-packages;/home/apcave/nordic/.venv/lib/python3.11/site-packages
 _Python3_INTERPRETER_SIGNATURE:INTERNAL=9c20ffe7bf3ed2cad4052608f1f2e6dd
-//Interpreter reason failure
-_Python3_Interpreter_REASON_FAILURE:INTERNAL=
 //NumPy reason failure
 _Python3_NumPy_REASON_FAILURE:INTERNAL=
 //Kconfig fragment defined by main application

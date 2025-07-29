@@ -1120,6 +1120,8 @@ zephyr_udc0: &usbd {
 / {
  chosen {
   zephyr,code-partition = &slot0_partition;
+  zephyr,console = &uart0;
+  zephyr,shell-uart = &uart0;
  };
 };
 
@@ -1155,6 +1157,38 @@ zephyr_udc0: &usbd {
   storage_partition: partition@f8000 {
    label = "storage";
    reg = <0x000f8000 0x00008000>;
+  };
+ };
+};
+
+
+&uart0 {
+ compatible = "nordic,nrf-uarte";
+ status = "okay";
+ current-speed = <115200>;
+ pinctrl-0 = <&uart0_default>;
+ pinctrl-1 = <&uart0_sleep>;
+ pinctrl-names = "default", "sleep";
+};
+
+&pinctrl {
+ uart0_default: uart0_default {
+  group1 {
+
+   psels = <((((((1) * 32U) + (11)) & 0x1FFU) << 0U) | ((0U & 0xFFU) << 24U))>;
+  };
+  group2 {
+
+   psels = <((((((1) * 32U) + (12)) & 0x1FFU) << 0U) | ((1U & 0xFFU) << 24U))>;
+   bias-pull-up;
+  };
+ };
+
+ uart0_sleep: uart0_sleep {
+  group1 {
+   psels = <((((((1) * 32U) + (11)) & 0x1FFU) << 0U) | ((0U & 0xFFU) << 24U))>,
+    <((((((1) * 32U) + (12)) & 0x1FFU) << 0U) | ((1U & 0xFFU) << 24U))>;
+   low-power-enable;
   };
  };
 };

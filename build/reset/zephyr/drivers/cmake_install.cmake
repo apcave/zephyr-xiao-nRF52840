@@ -99,11 +99,6 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/apcave/nordic/reset/build/reset/zephyr/drivers/hwinfo/cmake_install.cmake")
-endif()
-
-if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  # Include the install script for the subdirectory.
   include("/home/apcave/nordic/reset/build/reset/zephyr/drivers/led/cmake_install.cmake")
 endif()
 
