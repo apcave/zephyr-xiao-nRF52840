@@ -1,0 +1,15 @@
+# west.yml for reset project
+manifest:
+  self:
+    path: .
+
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+
+  projects:
+    - name: zephyr
+      remote: ncs
+      repo-path: sdk-zephyr
+      revision: v3.7.99-ncs1
+      import: true

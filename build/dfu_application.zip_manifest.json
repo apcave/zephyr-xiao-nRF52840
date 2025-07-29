@@ -1,0 +1,20 @@
+{
+    "format-version": 1,
+    "time": 1753801462,
+    "files": [
+        {
+            "type": "application",
+            "board": "xiao_ble",
+            "soc": "nrf52840",
+            "load_address": 49664,
+            "image_index": "0",
+            "slot_index_primary": "1",
+            "slot_index_secondary": "2",
+            "version_MCUBOOT": "0.0.0+0",
+            "size": 183850,
+            "file": "reset.signed.bin",
+            "modtime": 1753801462
+        }
+    ],
+    "name": "reset"
+}

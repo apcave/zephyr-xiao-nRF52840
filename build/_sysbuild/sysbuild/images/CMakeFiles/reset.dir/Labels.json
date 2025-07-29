@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/CMakeFiles/reset"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/CMakeFiles/reset.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/CMakeFiles/reset-complete.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-build.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-configure.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-download.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-install.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-mkdir.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-patch.rule"
+		},
+		{
+			"file" : "/home/apcave/nordic/reset/build/_sysbuild/sysbuild/images/reset-prefix/src/reset-stamp/reset-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"reset"
+		],
+		"name" : "reset"
+	}
+}

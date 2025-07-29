@@ -1,0 +1,9 @@
+default: reset
+build_dir: /home/apcave/nordic/reset/build
+domains:
+  - name: reset
+    build_dir: /home/apcave/nordic/reset/build/reset
+  - name: mcuboot
+    build_dir: /home/apcave/nordic/reset/build/mcuboot
+flash_order:
+  - reset
