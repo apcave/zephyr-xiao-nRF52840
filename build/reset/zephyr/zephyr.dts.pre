@@ -1122,6 +1122,7 @@ zephyr_udc0: &usbd {
   zephyr,code-partition = &slot0_partition;
   zephyr,console = &uart0;
   zephyr,shell-uart = &uart0;
+  zephyr,bt-uart = &uart0;
  };
 };
 

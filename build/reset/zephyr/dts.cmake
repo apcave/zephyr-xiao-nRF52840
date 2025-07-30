@@ -12,6 +12,7 @@ set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_CHOSEN|zephyr,sram" "/
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_CHOSEN|zephyr,flash" "/soc/flash-controller@4001e000/flash@0")
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_CHOSEN|zephyr,code-partition" "/soc/flash-controller@4001e000/flash@0/partitions/partition@c000")
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_CHOSEN|zephyr,ieee802154" "/soc/radio@40001000/ieee802154")
+set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_CHOSEN|zephyr,bt-uart" "/soc/uart@40002000")
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_ALIAS|watchdog0" "/soc/watchdog@40010000")
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_ALIAS|led0" "/leds/led_0")
 set_target_properties(${DEVICETREE_TARGET} PROPERTIES "DT_ALIAS|bootloader-led0" "/leds/led_0")
