@@ -13,10 +13,11 @@ import argparse
 import os
 
 # Service and Characteristic UUIDs
-DATA_STREAM_SERVICE_UUID = "12345678-1234-5678-9ABC-DEF012345678"
-FIRMWARE_UPDATE_CHAR_UUID = "12345678-1234-5678-9ABC-DEF01234567B"
-FIRMWARE_STATUS_CHAR_UUID = "12345678-1234-5678-9ABC-DEF01234567C"
+DATA_STREAM_SERVICE_UUID   = "12345678-1234-5678-9ABC-DEF012345678"
+FIRMWARE_UPDATE_CHAR_UUID  = "12345678-1234-5678-9ABC-DEF01234567B"
+FIRMWARE_STATUS_CHAR_UUID  = "12345678-1234-5678-9ABC-DEF01234567C"
 FIRMWARE_CONTROL_CHAR_UUID = "12345678-1234-5678-9ABC-DEF01234567D"
+
 
 # Firmware control commands
 FW_CMD_START = 0x01
@@ -198,7 +199,7 @@ class FirmwareUpdater:
             print("\\n2. Sending firmware chunks...")
             bytes_sent = 0
             chunk_count = 0
-            
+
             while bytes_sent < firmware_size:
                 chunk_end = min(bytes_sent + chunk_size, firmware_size)
                 chunk = firmware_data[bytes_sent:chunk_end]
