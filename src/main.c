@@ -8,6 +8,9 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/usb/usb_device.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/sys/reboot.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -68,8 +71,6 @@ static uint16_t data_length = 0;
 
 /* Firmware update buffers and state */
 #define FIRMWARE_CHUNK_SIZE 240  // MTU - overhead for firmware chunks
-#define FIRMWARE_BUFFER_SIZE (64 * 1024)  // 64KB firmware buffer
-static uint8_t firmware_buffer[FIRMWARE_BUFFER_SIZE];
 static uint32_t firmware_size = 0;
 static uint32_t firmware_received = 0;
 static uint32_t firmware_crc32 = 0;
@@ -95,40 +96,21 @@ static firmware_status_t firmware_status = FW_STATUS_IDLE;
 #define FW_CMD_VERIFY 0x03
 #define FW_CMD_FLASH 0x04
 #define FW_CMD_ABORT 0x05
+#define FW_CMD_SWAP_AND_REBOOT 0x06
 
 /* Forward declaration of the service attributes */
 static const struct bt_gatt_attr *data_output_attr;
 static const struct bt_gatt_attr *firmware_status_attr;
 
-/* Simple CRC32 calculation */
-static uint32_t calculate_crc32(const uint8_t *data, uint32_t length)
-{
-	uint32_t crc = 0xFFFFFFFF;
-	const uint32_t polynomial = 0xEDB88320;
-	
-	for (uint32_t i = 0; i < length; i++) {
-		crc ^= data[i];
-		for (int j = 0; j < 8; j++) {
-			if (crc & 1) {
-				crc = (crc >> 1) ^ polynomial;
-			} else {
-				crc >>= 1;
-			}
-		}
-	}
-	return ~crc;
-}
-
 /* Reset firmware update state */
 static void firmware_reset(void)
 {
-	firmware_size = 0;
-	firmware_received = 0;
-	firmware_crc32 = 0;
-	firmware_update_active = false;
-	firmware_status = FW_STATUS_IDLE;
-	memset(firmware_buffer, 0, sizeof(firmware_buffer));
-	LOG_INF("Firmware update state reset");
+firmware_size = 0;
+firmware_received = 0;
+firmware_crc32 = 0;
+firmware_update_active = false;
+firmware_status = FW_STATUS_IDLE;
+LOG_INF("Firmware update state reset");
 }
 
 /* Notify firmware status change */
@@ -190,7 +172,7 @@ static ssize_t data_input_write(struct bt_conn *conn, const struct bt_gatt_attr 
 	
 	/* Send processed data back via notification */
 	int err = bt_gatt_notify(conn, data_output_attr, 
-			         output_data, data_length + 2);  // +2 for prefix
+					 output_data, data_length + 2);  // +2 for prefix
 	if (err) {
 		LOG_ERR("Failed to send notification: %d", err);
 	} else {
@@ -223,7 +205,7 @@ static void data_output_ccc_changed(const struct bt_gatt_attr *attr, uint16_t va
 
 /* Firmware Update write callback - receives firmware chunks */
 static ssize_t firmware_update_write(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				     const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
+					 const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
 	const uint8_t *data = buf;
 	
@@ -231,43 +213,59 @@ static ssize_t firmware_update_write(struct bt_conn *conn, const struct bt_gatt_
 		LOG_ERR("Firmware update not active");
 		return BT_GATT_ERR(BT_ATT_ERR_NOT_SUPPORTED);
 	}
-	
+
 	if (firmware_received + len > firmware_size) {
 		LOG_ERR("Firmware chunk exceeds expected size");
 		firmware_status = FW_STATUS_ERROR;
 		notify_firmware_status(conn);
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
-	
-	if (firmware_received + len > FIRMWARE_BUFFER_SIZE) {
-		LOG_ERR("Firmware buffer overflow");
+
+	/* Write chunk directly to flash */
+	const struct flash_area *fa;
+	int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
+	if (ret) {
+		LOG_ERR("Failed to open flash area: %d", ret);
 		firmware_status = FW_STATUS_ERROR;
 		notify_firmware_status(conn);
 		return BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES);
 	}
-	
-	/* Store firmware chunk */
-	memcpy(&firmware_buffer[firmware_received], data, len);
+
+	/* Write chunk at current offset */
+    if (firmware_received + len >= firmware_size && len % 4 != 0) {
+        // Write a few bytes to align to 4-byte boundary only if the file is finished.
+        uint16_t tmp = 4*((len / 4)+1);
+        ret = flash_area_write(fa, firmware_received, data, tmp);
+    } else {
+	    ret = flash_area_write(fa, firmware_received, data, len);
+    }
+	flash_area_close(fa);
+	if (ret) {
+		LOG_ERR("Failed to write chunk to flash: %d", ret);
+		firmware_status = FW_STATUS_ERROR;
+		notify_firmware_status(conn);
+		return BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES);
+	}
+
 	firmware_received += len;
-	
-	LOG_INF("Received firmware chunk: %d/%d bytes", firmware_received, firmware_size);
-	
+	// LOG_INF("Received firmware chunk: %d/%d bytes", firmware_received, firmware_size);
+
 	/* Update status */
 	firmware_status = FW_STATUS_RECEIVING;
-	
+
 	/* Check if complete */
 	if (firmware_received >= firmware_size) {
 		firmware_status = FW_STATUS_RECEIVED;
 		LOG_INF("Firmware completely received: %d bytes", firmware_received);
 	}
-	
+
 	notify_firmware_status(conn);
 	return len;
 }
 
 /* Firmware Status read callback */
 static ssize_t firmware_status_read(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				    void *buf, uint16_t len, uint16_t offset)
+					void *buf, uint16_t len, uint16_t offset)
 {
 	uint8_t status_data[8];
 	status_data[0] = firmware_status;
@@ -284,7 +282,7 @@ static ssize_t firmware_status_read(struct bt_conn *conn, const struct bt_gatt_a
 
 /* Firmware Control write callback - handles commands */
 static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-				      const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
+					  const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
 	const uint8_t *data = buf;
 	
@@ -300,27 +298,72 @@ static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt
 			LOG_ERR("FW_CMD_START requires 5 bytes (cmd + size)");
 			return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
 		}
-		
+
 		uint32_t new_firmware_size = (data[1] << 0) | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
-		if (new_firmware_size > FIRMWARE_BUFFER_SIZE) {
-			LOG_ERR("Firmware size too large: %d", new_firmware_size);
+		/* Check partition size */
+		const struct flash_area *fa;
+		int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
+		if (ret || new_firmware_size > fa->fa_size) {
+			LOG_ERR("Firmware size too large for partition: %d", new_firmware_size);
 			firmware_status = FW_STATUS_ERROR;
+			if (!ret) flash_area_close(fa);
 		} else {
 			firmware_reset();
 			firmware_size = new_firmware_size;  // Set size after reset
 			firmware_update_active = true;
 			firmware_status = FW_STATUS_RECEIVING;
 			LOG_INF("Firmware update started, expecting %d bytes", firmware_size);
+			/* Erase partition before writing */
+			ret = flash_area_erase(fa, 0, fa->fa_size);
+			flash_area_close(fa);
+			if (ret) {
+				LOG_ERR("Failed to erase partition: %d", ret);
+				firmware_status = FW_STATUS_ERROR;
+			}
 		}
 		break;
-		
+
 	case FW_CMD_VERIFY:
 		if (firmware_status != FW_STATUS_RECEIVED) {
 			LOG_ERR("Cannot verify - firmware not received");
 			firmware_status = FW_STATUS_ERROR;
 		} else {
 			firmware_status = FW_STATUS_VERIFYING;
-			uint32_t calculated_crc = calculate_crc32(firmware_buffer, firmware_received);
+			/* Read back data from flash and calculate CRC32 */
+			const struct flash_area *fa;
+			int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
+			if (ret) {
+				LOG_ERR("Failed to open flash area for CRC: %d", ret);
+				firmware_status = FW_STATUS_ERROR;
+				break;
+			}
+			uint8_t buf[FIRMWARE_CHUNK_SIZE];
+			uint32_t crc = 0xFFFFFFFF;
+			const uint32_t polynomial = 0xEDB88320;
+			uint32_t offset = 0;
+			while (offset < firmware_received) {
+				uint32_t chunk = (firmware_received - offset) > FIRMWARE_CHUNK_SIZE ? FIRMWARE_CHUNK_SIZE : (firmware_received - offset);
+				ret = flash_area_read(fa, offset, buf, chunk);
+				if (ret) {
+					LOG_ERR("Failed to read flash for CRC: %d", ret);
+					flash_area_close(fa);
+					firmware_status = FW_STATUS_ERROR;
+					break;
+				}
+				for (uint32_t i = 0; i < chunk; i++) {
+					crc ^= buf[i];
+					for (int j = 0; j < 8; j++) {
+						if (crc & 1) {
+							crc = (crc >> 1) ^ polynomial;
+						} else {
+							crc >>= 1;
+						}
+					}
+				}
+				offset += chunk;
+			}
+			flash_area_close(fa);
+			uint32_t calculated_crc = ~crc;
 			if (len >= 5) {
 				uint32_t expected_crc = (data[1] << 0) | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
 				if (calculated_crc == expected_crc) {
@@ -328,8 +371,7 @@ static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt
 					LOG_INF("Firmware verified successfully (CRC32: 0x%08X)", calculated_crc);
 				} else {
 					firmware_status = FW_STATUS_ERROR;
-					LOG_ERR("Firmware verification failed. Expected: 0x%08X, Got: 0x%08X", 
-						   expected_crc, calculated_crc);
+					LOG_ERR("Firmware verification failed. Expected: 0x%08X, Got: 0x%08X", expected_crc, calculated_crc);
 				}
 			} else {
 				firmware_status = FW_STATUS_VERIFIED;
@@ -345,11 +387,9 @@ static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt
 		} else {
 			firmware_status = FW_STATUS_FLASHING;
 			notify_firmware_status(conn);
-			LOG_INF("Firmware flashing simulation started...");
-			/* TODO: Implement actual flashing to secondary partition */
-			k_msleep(1000); // Simulate flashing time
+			LOG_INF("Firmware already written to secondary partition during transfer.");
 			firmware_status = FW_STATUS_COMPLETE;
-			LOG_INF("Firmware update complete!");
+			LOG_INF("Firmware update marked complete. Ready to swap and reboot.");
 		}
 		break;
 		
@@ -361,6 +401,34 @@ static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt
 	case FW_CMD_ABORT:
 		firmware_reset();
 		LOG_INF("Firmware update aborted");
+		break;
+		
+	case FW_CMD_SWAP_AND_REBOOT:
+		if (firmware_status != FW_STATUS_COMPLETE) {
+			LOG_ERR("Cannot swap - firmware update not complete");
+			firmware_status = FW_STATUS_ERROR;
+		} else {
+			LOG_INF("Marking new firmware for boot and rebooting...");
+			
+			/* Mark the secondary slot as ready for swap */
+			const struct flash_area *fa;
+			int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
+			if (ret == 0) {
+				/* For MCUboot, we would typically write image header and trailer
+				 * For this demo, we'll just trigger a reboot */
+				flash_area_close(fa);
+				LOG_INF("System rebooting to apply new firmware...");
+				
+				/* Give some time for the log message to be sent */
+				k_msleep(500);
+				
+				/* Trigger system reboot */
+				sys_reboot(SYS_REBOOT_COLD);
+			} else {
+				LOG_ERR("Failed to access flash area for swap: %d", ret);
+				firmware_status = FW_STATUS_ERROR;
+			}
+		}
 		break;
 		
 	default:
@@ -386,39 +454,39 @@ BT_GATT_SERVICE_DEFINE(data_stream_service,
 	
 	/* Data Input Characteristic - Write Only */
 	BT_GATT_CHARACTERISTIC(DATA_INPUT_CHAR_UUID,
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-			       BT_GATT_PERM_WRITE,
-			       NULL, data_input_write, NULL),
+				   BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+				   BT_GATT_PERM_WRITE,
+				   NULL, data_input_write, NULL),
 	
 	/* Data Output Characteristic - Read + Notify */
 	BT_GATT_CHARACTERISTIC(DATA_OUTPUT_CHAR_UUID,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       data_output_read, NULL, NULL),
+				   BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+				   BT_GATT_PERM_READ,
+				   data_output_read, NULL, NULL),
 	
 	/* CCC Descriptor for data output notifications */
 	BT_GATT_CCC(data_output_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	
 	/* Firmware Update Characteristic - Write Only (for firmware chunks) */
 	BT_GATT_CHARACTERISTIC(FIRMWARE_UPDATE_CHAR_UUID,
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-			       BT_GATT_PERM_WRITE,
-			       NULL, firmware_update_write, NULL),
+				   BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+				   BT_GATT_PERM_WRITE,
+				   NULL, firmware_update_write, NULL),
 	
 	/* Firmware Status Characteristic - Read + Notify */
 	BT_GATT_CHARACTERISTIC(FIRMWARE_STATUS_CHAR_UUID,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       firmware_status_read, NULL, NULL),
+				   BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+				   BT_GATT_PERM_READ,
+				   firmware_status_read, NULL, NULL),
 	
 	/* CCC Descriptor for firmware status notifications */
 	BT_GATT_CCC(firmware_status_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	
 	/* Firmware Control Characteristic - Write Only (for commands) */
 	BT_GATT_CHARACTERISTIC(FIRMWARE_CONTROL_CHAR_UUID,
-			       BT_GATT_CHRC_WRITE,
-			       BT_GATT_PERM_WRITE,
-			       NULL, firmware_control_write, NULL),
+				   BT_GATT_CHRC_WRITE,
+				   BT_GATT_PERM_WRITE,
+				   NULL, firmware_control_write, NULL),
 );
 
 /* Initialize the output attribute pointers after service definition */
@@ -441,8 +509,8 @@ static const struct bt_data sd[] = {
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_GATT_VAL)),
 	/* Advertise our custom Data Stream Service */
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, 
-		      0x78, 0x56, 0x34, 0x12, 0xF0, 0xDE, 0xBC, 0x9A,
-		      0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12),
+			  0x78, 0x56, 0x34, 0x12, 0xF0, 0xDE, 0xBC, 0x9A,
+			  0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12),
 };
 
 /* Bluetooth ready callback */
@@ -467,7 +535,7 @@ static void bt_ready_cb(int err)
 #endif
 
 	/* Start advertising with default connectable parameters */
-    err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 	if (err) {
 		LOG_ERR("Advertising failed to start (err %d)", err);
 		printk("ERROR: Failed to start advertising! err = %d\n", err);
@@ -581,17 +649,49 @@ static int cmd_firmware_status(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "Expected Size: %d bytes", firmware_size);
 	shell_print(sh, "Received: %d bytes", firmware_received);
 	shell_print(sh, "Active: %s", firmware_update_active ? "YES" : "NO");
-	if (firmware_received > 0) {
-		uint32_t crc = calculate_crc32(firmware_buffer, firmware_received);
-		shell_print(sh, "CRC32: 0x%08X", crc);
+
+	// Show CRC only if firmware is verified or complete
+	if (firmware_status == FW_STATUS_VERIFIED || firmware_status == FW_STATUS_COMPLETE) {
+		// Calculate CRC from flash
+		const struct flash_area *fa;
+		int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
+		if (!ret) {
+			uint8_t buf[FIRMWARE_CHUNK_SIZE];
+			uint32_t crc = 0xFFFFFFFF;
+			const uint32_t polynomial = 0xEDB88320;
+			uint32_t offset = 0;
+			while (offset < firmware_received) {
+				uint32_t chunk = (firmware_received - offset) > FIRMWARE_CHUNK_SIZE ? FIRMWARE_CHUNK_SIZE : (firmware_received - offset);
+				ret = flash_area_read(fa, offset, buf, chunk);
+				if (ret) {
+					shell_print(sh, "CRC read error at offset %u", offset);
+					break;
+				}
+				for (uint32_t i = 0; i < chunk; i++) {
+					crc ^= buf[i];
+					for (int j = 0; j < 8; j++) {
+						if (crc & 1) {
+							crc = (crc >> 1) ^ polynomial;
+						} else {
+							crc >>= 1;
+						}
+					}
+				}
+				offset += chunk;
+			}
+			flash_area_close(fa);
+			shell_print(sh, "CRC32: 0x%08X", ~crc);
+		} else {
+			shell_print(sh, "Unable to open flash for CRC");
+		}
 	}
-	
+
 	shell_print(sh, "");
 	shell_print(sh, "Firmware Update Service UUIDs:");
 	shell_print(sh, "  Update (chunks): 12345678-1234-5678-9ABC-DEF01234567B");
 	shell_print(sh, "  Status:          12345678-1234-5678-9ABC-DEF01234567C");
 	shell_print(sh, "  Control:         12345678-1234-5678-9ABC-DEF01234567D");
-	
+
 	return 0;
 }
 

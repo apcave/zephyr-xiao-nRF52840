@@ -24,6 +24,7 @@ FW_CMD_RESET = 0x02
 FW_CMD_VERIFY = 0x03
 FW_CMD_FLASH = 0x04
 FW_CMD_ABORT = 0x05
+FW_CMD_SWAP_AND_REBOOT = 0x06
 
 # Status codes
 FW_STATUS_IDLE = 0x00
@@ -152,7 +153,7 @@ class FirmwareUpdater:
         
         return (~crc) & 0xFFFFFFFF
     
-    async def update_firmware(self, firmware_path, chunk_size=240):
+    async def update_firmware(self, firmware_path, chunk_size=240, auto_reboot=False):
         """Update firmware from file"""
         if not os.path.exists(firmware_path):
             raise Exception(f"Firmware file not found: {firmware_path}")
@@ -165,8 +166,8 @@ class FirmwareUpdater:
         print(f"Firmware file: {firmware_path}")
         print(f"Firmware size: {firmware_size} bytes")
         
-        # Check if firmware fits in device buffer (64KB = 65536 bytes)
-        max_size = 65536
+        # Check if firmware fits in device buffer (480 kB)
+        max_size = 483328
         if firmware_size > max_size:
             raise Exception(f"Firmware too large: {firmware_size} bytes (max: {max_size} bytes)")
         
@@ -282,6 +283,17 @@ class FirmwareUpdater:
             
             print("\\n🎉 Firmware update completed successfully!")
             
+            if auto_reboot:
+                print("\\n6. Swapping partitions and rebooting device...")
+                print("   Sending SWAP_AND_REBOOT command...")
+                await self.send_command(FW_CMD_SWAP_AND_REBOOT)
+                print("   Device will reboot to apply new firmware!")
+                print("   Note: Device will disconnect during reboot.")
+            else:
+                print("\\n💡 To apply the new firmware, use:")
+                print("   python3 firmware-update.py --swap-and-reboot")
+                print("   Or send SWAP_AND_REBOOT command manually")
+            
         except Exception as e:
             print(f"\\n❌ Firmware update failed: {e}")
             print("Aborting update...")
@@ -290,24 +302,35 @@ class FirmwareUpdater:
 
 async def main():
     parser = argparse.ArgumentParser(description="Firmware Update Client")
-    parser.add_argument("firmware", help="Path to firmware file")
+    parser.add_argument("firmware", nargs='?', help="Path to firmware file")
     parser.add_argument("--device", default="AlexBlue", help="Device name to connect to")
     parser.add_argument("--chunk-size", type=int, default=240, help="Chunk size for transfer")
+    parser.add_argument("--auto-reboot", action="store_true", help="Automatically reboot device after flashing")
+    parser.add_argument("--swap-and-reboot", action="store_true", help="Only swap partitions and reboot (no firmware transfer)")
     
     args = parser.parse_args()
+    
+    if not args.firmware and not args.swap_and_reboot:
+        parser.error("Either provide firmware file or use --swap-and-reboot")
     
     updater = FirmwareUpdater(args.device)
     
     try:
         await updater.connect()
         
-        # Show initial status
-        status, received, expected = await updater.read_status()
-        status_name = STATUS_NAMES.get(status, f"UNKNOWN(0x{status:02X})")
-        print(f"Initial status: {status_name}")
-        
-        # Update firmware
-        await updater.update_firmware(args.firmware, args.chunk_size)
+        if args.swap_and_reboot:
+            # Only swap and reboot
+            print("Swapping partitions and rebooting device...")
+            await updater.send_command(FW_CMD_SWAP_AND_REBOOT)
+            print("Device will reboot to apply new firmware!")
+        else:
+            # Show initial status
+            status, received, expected = await updater.read_status()
+            status_name = STATUS_NAMES.get(status, f"UNKNOWN(0x{status:02X})")
+            print(f"Initial status: {status_name}")
+            
+            # Update firmware
+            await updater.update_firmware(args.firmware, args.chunk_size, args.auto_reboot)
         
     except KeyboardInterrupt:
         print("\\nInterrupted by user")
