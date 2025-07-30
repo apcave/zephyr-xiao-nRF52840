@@ -9,6 +9,13 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/usb/usb_device.h>
 
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/uuid.h>
+
+
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* The devicetree node identifier for the "led0" alias. */
@@ -21,6 +28,42 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static bool led_state = true;
 static bool blink_enabled = true;
+
+// <------------------------------ Bluetooth Configuration ----------------------------->
+/* Bluetooth advertising data */
+static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
+/* Bluetooth scan response data (optional additional info) */
+static const struct bt_data sd[] = {
+	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_GATT_VAL)),
+};
+
+/* Bluetooth ready callback */
+static void bt_ready_cb(int err)
+{
+	if (err) {
+		LOG_ERR("Bluetooth init failed (err %d)", err);
+		return;
+	}
+
+	LOG_INF("Bluetooth initialized");
+	printk("Bluetooth initialized successfully\n");
+
+	/* Start advertising with default connectable parameters */
+    err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err) {
+		LOG_ERR("Advertising failed to start (err %d)", err);
+		printk("ERROR: Failed to start advertising! err = %d\n", err);
+		return;
+	}
+
+	LOG_INF("Advertising successfully started");
+	printk("Bluetooth advertising started as '%s'\n", CONFIG_BT_DEVICE_NAME);
+}
+
 
 /* Shell command to control LED */
 static int cmd_led_on(const struct shell *sh, size_t argc, char **argv)
@@ -109,17 +152,14 @@ int main(void)
 
 	LOG_INF("LED configured successfully");
 
-#ifdef CONFIG_USB_DEVICE_STACK
-	/* Enable USB for USB console */
-	ret = usb_enable(NULL);
-	if (ret < 0) {
-		LOG_WRN("Failed to enable USB: %d", ret);
+	/* Initialize Bluetooth */
+	ret = bt_enable(bt_ready_cb);
+	if (ret) {
+		LOG_ERR("Bluetooth init failed (err %d)", ret);
+		printk("ERROR: Bluetooth initialization failed! ret = %d\n", ret);
 	} else {
-		LOG_INF("USB console enabled - connect via USB CDC ACM");
-		/* Wait a bit for USB to enumerate */
-		k_msleep(1000);
+		printk("Bluetooth initialization started...\n");
 	}
-#endif
 
 	LOG_INF("Console available on:");
 	LOG_INF("  - UART: pins D6(TX)/D7(RX) at 115200 baud");

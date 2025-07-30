@@ -1,6 +1,6 @@
 {
     "format-version": 1,
-    "time": 1753843354,
+    "time": 1753847530,
     "files": [
         {
             "type": "application",
@@ -11,9 +11,9 @@
             "slot_index_primary": "1",
             "slot_index_secondary": "2",
             "version_MCUBOOT": "0.0.0+0",
-            "size": 184955,
+            "size": 206667,
             "file": "reset.signed.bin",
-            "modtime": 1753843354
+            "modtime": 1753847529
         }
     ],
     "name": "reset"

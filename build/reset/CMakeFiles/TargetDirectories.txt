@@ -391,6 +391,13 @@
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/host/CMakeFiles/install.dir
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/host/CMakeFiles/install/local.dir
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/host/CMakeFiles/install/strip.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/subsys__bluetooth__shell.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/edit_cache.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/rebuild_cache.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/list_install_components.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/install.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/install/local.dir
+/home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/shell/CMakeFiles/install/strip.dir
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/services/CMakeFiles/edit_cache.dir
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/services/CMakeFiles/rebuild_cache.dir
 /home/apcave/nordic/reset/build/reset/zephyr/subsys/bluetooth/services/CMakeFiles/list_install_components.dir
