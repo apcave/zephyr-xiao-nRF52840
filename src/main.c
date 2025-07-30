@@ -12,6 +12,7 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/reboot.h>
 #include <string.h>
+#include <zephyr/dfu/mcuboot.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/gap.h>
@@ -71,6 +72,8 @@ static uint16_t data_length = 0;
 
 /* Firmware update buffers and state */
 #define FIRMWARE_CHUNK_SIZE 240  // MTU - overhead for firmware chunks
+
+
 static uint32_t firmware_size = 0;
 static uint32_t firmware_received = 0;
 static uint32_t firmware_crc32 = 0;
@@ -116,20 +119,23 @@ LOG_INF("Firmware update state reset");
 /* Notify firmware status change */
 static void notify_firmware_status(struct bt_conn *conn)
 {
-	uint8_t status_data[8];
-	status_data[0] = firmware_status;
-	status_data[1] = (firmware_received >> 0) & 0xFF;
-	status_data[2] = (firmware_received >> 8) & 0xFF;
-	status_data[3] = (firmware_received >> 16) & 0xFF;
-	status_data[4] = (firmware_received >> 24) & 0xFF;
-	status_data[5] = (firmware_size >> 0) & 0xFF;
-	status_data[6] = (firmware_size >> 8) & 0xFF;
-	status_data[7] = (firmware_size >> 16) & 0xFF;
+    return;
+
+    // The status is polled and notifications don't work.
+	// uint8_t status_data[8];
+	// status_data[0] = firmware_status;
+	// status_data[1] = (firmware_received >> 0) & 0xFF;
+	// status_data[2] = (firmware_received >> 8) & 0xFF;
+	// status_data[3] = (firmware_received >> 16) & 0xFF;
+	// status_data[4] = (firmware_received >> 24) & 0xFF;
+	// status_data[5] = (firmware_size >> 0) & 0xFF;
+	// status_data[6] = (firmware_size >> 8) & 0xFF;
+	// status_data[7] = (firmware_size >> 16) & 0xFF;
 	
-	int err = bt_gatt_notify(conn, firmware_status_attr, status_data, sizeof(status_data));
-	if (err) {
-		LOG_ERR("Failed to notify firmware status: %d", err);
-	}
+	// int err = bt_gatt_notify(conn, firmware_status_attr, status_data, sizeof(status_data));
+	// if (err) {
+	// 	LOG_ERR("Failed to notify firmware status: %d", err);
+	// }
 }
 
 /* Function to process/alter the data */
@@ -414,10 +420,16 @@ static ssize_t firmware_control_write(struct bt_conn *conn, const struct bt_gatt
 			const struct flash_area *fa;
 			int ret = flash_area_open(FIXED_PARTITION_ID(slot1_partition), &fa);
 			if (ret == 0) {
-				/* For MCUboot, we would typically write image header and trailer
-				 * For this demo, we'll just trigger a reboot */
+
 				flash_area_close(fa);
 				LOG_INF("System rebooting to apply new firmware...");
+
+                int rc = boot_request_upgrade(0); // Test the new image if it boots it get confirmed.
+                if (rc != 0) {
+                    LOG_ERR("Failed to set slot1 image as pending: %d", rc);
+                } else {
+                    LOG_INF("Slot1 image marked as pending for swap");
+                }                
 				
 				/* Give some time for the log message to be sent */
 				k_msleep(500);
@@ -523,6 +535,15 @@ static void bt_ready_cb(int err)
 
 	LOG_INF("Bluetooth initialized");
 	printk("Bluetooth initialized successfully\n");
+
+    err = boot_write_img_confirmed();
+    if (err) {
+        LOG_ERR("Failed to confirm image: %d", err);
+        printk("ERROR: Failed to confirm image! err = %d\n", err);
+    } else {
+        LOG_INF("Image confirmed for next boot");
+        printk("Image confirmed for next boot\n");
+    }
 
 	/* Initialize GATT service */
 	init_gatt_service();
@@ -780,6 +801,7 @@ int main(void)
 		LOG_ERR("Error %d: failed to configure LED pin", ret);
 		return -1;
 	}
+    // LOG_INF("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Test Firmware Update >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
 
 	LOG_INF("LED configured successfully");
 
